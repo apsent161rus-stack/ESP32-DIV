@@ -26,6 +26,10 @@ void updateStatusBar();
 /** Stop GPS wardriver background task before WiFi/BLE features use the radio. */
 void pauseBackgroundRadioTasks();
 float readBatteryVoltage();
+/** Battery charge in percent. On boards without a battery ADC (v2) the value is
+ *  read from the IP5306 PMIC over I2C (address 0x75, register 0x78).
+ *  Returns -1 when the chip does not answer. */
+int readBatteryPercent();
 float readInternalTemperature();
 bool isSDCardAvailable();
 /** After SPI is used for another device (nRF24 / CC1101 / PN532), restore pins,

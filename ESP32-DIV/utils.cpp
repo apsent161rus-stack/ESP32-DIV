@@ -497,6 +497,93 @@ float readBatteryVoltage()
   return (avgMv / 1000.0f) * 2.0f;
 }
 
+int readBatteryPercent()
+{
+#if defined(BATTERY_ADC_PIN) && (BATTERY_ADC_PIN >= 0)
+  // Board has a real battery divider on an ADC pin — derive percent from voltage.
+  float v = readBatteryVoltage();
+  int pct = (int)((v - 3.00f) / (4.20f - 3.00f) * 100.0f);
+  return constrain(pct, 0, 100);
+#else
+  // v2: no ADC path to the battery. The IP5306 PMIC exposes only four coarse
+  // levels on register 0x78 (top nibble): 0xE0=25%, 0xC0=50%, 0x80=75%, 0x00=100%.
+  //
+  // To show a 1..100% scale we anchor on the reported step and interpolate
+  // linearly in time between steps: a step is assumed to last kMinPerStep
+  // minutes at the current load. Discharging drifts down, charging drifts up.
+  // This is an estimate, not a measurement — there is no voltage sensor on v2.
+  static const uint8_t  kAddr       = 0x75;
+  static const uint8_t  kRegLevel   = 0x78;
+  static const uint8_t  kRegStatus  = 0x70;  // bit3 = charging
+  static const uint32_t kPollMs     = 3000;
+  static const uint32_t kMinPerStep = 45;    // 25% per 45 min ≈ 3 h full battery
+  static const uint32_t kMsPerPct   = (kMinPerStep * 60000UL) / 25UL;
+
+  static int      rawLevel   = -1;   // 25/50/75/100 as reported by the PMIC
+  static int      smoothPct  = -1;   // what we display
+  static bool     charging   = false;
+  static uint32_t lastPoll   = 0;
+  static uint32_t anchorMs   = 0;
+
+  const uint32_t now = millis();
+
+  // --- poll the PMIC (throttled) ---
+  if (rawLevel < 0 || (now - lastPoll) >= kPollMs) {
+    lastPoll = now;
+
+    Wire.beginTransmission(kAddr);
+    Wire.write(kRegLevel);
+    if (Wire.endTransmission(false) == 0 &&
+        Wire.requestFrom((uint8_t)kAddr, (uint8_t)1) == 1) {
+      const uint8_t raw = Wire.read();
+      int level = -1;
+      switch (raw & 0xF0) {
+        case 0xE0: level = 25;  break;
+        case 0xC0: level = 50;  break;
+        case 0x80: level = 75;  break;
+        case 0x00: level = 100; break;
+        default:   break;
+      }
+      if (level > 0 && level != rawLevel) {
+        rawLevel = level;
+        smoothPct = level;   // snap to the freshly reported boundary
+        anchorMs = now;
+      }
+
+      Wire.beginTransmission(kAddr);
+      Wire.write(kRegStatus);
+      if (Wire.endTransmission(false) == 0 &&
+          Wire.requestFrom((uint8_t)kAddr, (uint8_t)1) == 1) {
+        charging = (Wire.read() & 0x08) != 0;
+      }
+    }
+  }
+
+  if (rawLevel < 0) return -1;                 // PMIC does not answer
+  if (smoothPct < 0) smoothPct = rawLevel;
+
+  // --- drift between steps ---
+  const uint32_t elapsed = now - anchorMs;
+  const int drift = (int)(elapsed / kMsPerPct);
+
+  if (charging) {
+    // climb toward the next step boundary (max 100)
+    const int ceilPct = (rawLevel >= 100) ? 100 : rawLevel + 25;
+    smoothPct = rawLevel + drift;
+    if (smoothPct > ceilPct) smoothPct = ceilPct;
+    if (smoothPct > 100)     smoothPct = 100;
+  } else {
+    // decay toward the next lower step boundary (min 1)
+    const int floorPct = (rawLevel <= 25) ? 1 : rawLevel - 24;
+    smoothPct = rawLevel - drift;
+    if (smoothPct < floorPct) smoothPct = floorPct;
+    if (smoothPct < 1)        smoothPct = 1;
+  }
+
+  return smoothPct;
+#endif
+}
+
 float readInternalTemperature() {
   float temperature = temperatureRead();
   return temperature;
@@ -527,7 +614,8 @@ static bool statusBarBatteryMeaningfulChange(int newPct, int oldPct, bool force)
     return newPct != oldPct;
   }
   const int d = newPct - oldPct;
-  return (d >= 3 || d <= -3);
+  // Redraw on every 1% step so the interpolated scale reads smoothly.
+  return (d >= 1 || d <= -1);
 }
 
 static int statusBarTempBand(float t) {
@@ -549,8 +637,19 @@ void drawStatusBar(float batteryVoltage, bool forceUpdate, bool bottomSeparator)
   static bool lastWardGpsIcon      = false;
   static uint32_t lastWardBlinkPhase = 0;
 
-  int batteryPercentage = ::map(batteryVoltage * 100, 300, 420, 0, 100);
+  int batteryPercentage;
+#if defined(BATTERY_ADC_PIN) && (BATTERY_ADC_PIN >= 0)
+  batteryPercentage = ::map(batteryVoltage * 100, 300, 420, 0, 100);
   batteryPercentage = constrain(batteryPercentage, 0, 100);
+#else
+  // v2 has no battery ADC — the level comes from the IP5306 over I2C.
+  // If the PMIC does not answer, fall back to the voltage-derived estimate.
+  batteryPercentage = readBatteryPercent();
+  if (batteryPercentage < 0) {
+    batteryPercentage = ::map(batteryVoltage * 100, 300, 420, 0, 100);
+    batteryPercentage = constrain(batteryPercentage, 0, 100);
+  }
+#endif
 
   int wifiDevices = 0;
   int bleDevices  = 0;
