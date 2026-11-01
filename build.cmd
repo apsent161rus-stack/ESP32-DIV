@@ -2,7 +2,7 @@
 rem ESP32-DIV fork — one-command build/flash helper
 setlocal
 set "AC=C:\Program Files\Arduino CLI\arduino-cli.exe"
-set "FQBN=esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB,CDCOnBoot=cdc"
+set "FQBN=esp32:esp32:esp32s3:FlashSize=4M,PSRAM=disabled,PartitionScheme=no_ota,CDCOnBoot=default"
 set "PORT=%~2"
 if "%PORT%"=="" set "PORT=COM4"
 cd /d "%~dp0"
