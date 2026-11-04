@@ -19,7 +19,10 @@ static const int NRF_CS[3] = {4, 48, 21};
 static const int NRF_CE[3] = {15, 47, 14};
 
 TFT_eSPI tft;
-SPIClass radioSPI(HSPI);          // SPI3 — отдельно от TFT (SPI2)
+SPIClass radioSPI(HSPI);          // отдельный порт под радиомодули
+static const SPISettings RADIO_CFG(1000000, MSBFIRST, SPI_MODE0);
+static inline void radioBegin() { radioSPI.beginTransaction(RADIO_CFG); }
+static inline void radioEnd()   { radioSPI.endTransaction(); }
 
 static int  g_pct = -1;
 static bool g_chg = false;
@@ -161,22 +164,22 @@ static void drawBatteryIcon(int x, int y) {
 }
 
 static void drawStatusBar(const char* left, const char* right) {
-  Serial.print("[sb1]");
+  
   tft.fillRect(0, 0, tft.width(), SB_H, 0x0861);
-  Serial.print("[sb2]");
+  
   tft.setTextDatum(TL_DATUM);
   tft.setTextColor(TFT_CYAN, 0x0861);
   tft.drawString(left, 5, 4, 1);
   tft.setTextColor(TFT_LIGHTGREY, 0x0861);
   tft.drawString(right, 82, 4, 1);
-  Serial.print("[sb3]");
+  
   char buf[8];
   snprintf(buf, sizeof(buf), "%d%%", g_pct < 0 ? 0 : g_pct);
   tft.setTextDatum(TR_DATUM);
   tft.setTextColor(g_pct > 50 ? TFT_GREEN : g_pct > 20 ? TFT_YELLOW : TFT_RED, 0x0861);
   tft.drawString(buf, 288, 4, 1);
   drawBatteryIcon(292, 3);
-  Serial.print("[sb4]");
+  
   tft.setTextDatum(TL_DATUM);
 }
 
@@ -226,7 +229,7 @@ static int dbmToY(int dbm) {
 }
 
 static void drawPanoramaFrame() {
-  Serial.print("[pf1]");
+  
   tft.fillRect(0, SB_H, tft.width(), tft.height() - SB_H, TFT_BLACK);
   tft.setTextDatum(TL_DATUM);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
@@ -236,18 +239,20 @@ static void drawPanoramaFrame() {
   tft.drawString("281-928 MHz CC1101", tft.width() - 6, SB_H + 3, 1);
   tft.setTextDatum(TL_DATUM);
   for (int i = 1; i < 4; i++) {
-  Serial.print("[pf2]");
+  
     int y = SPEC_TOP + i * (SPEC_BOT - SPEC_TOP) / 4;
     tft.drawFastHLine(0, y, tft.width(), 0x10A2);
   }
   footer("LEFT/RIGHT view");
-  Serial.print("[pf3]");
+  
 }
 
 static void sweepSubGHz() {
   const int W = tft.width();
-  int peak = -127; float peakF = 0;
-  long sum = 0; int mn = 127, mx = -127;
+  static uint8_t lvl[320];
+  int peak = -127; float peakF = 0; long sum = 0; int mn = 127, mx = -127;
+
+  radioBegin();
   for (int i = 0; i < W; i++) {
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (W - 1);
     ccSetFreq(f);
@@ -259,8 +264,13 @@ static void sweepSubGHz() {
     if (dbm < mn) mn = dbm;
     if (dbm > mx) mx = dbm;
     sum += dbm;
-    if ((i % 80) == 0) Serial.printf("  sweep col %d f=%.1f dbm=%d\n", i, f, dbm);
+    lvl[i] = (uint8_t)(dbm + 110);
+  }
+  uint8_t marc = ccReadB(0x35, true);
+  radioEnd();
 
+  for (int i = 0; i < W; i++) {
+    int dbm = (int)lvl[i] - 110;
     int y = dbmToY(dbm);
     tft.drawFastVLine(i, SPEC_TOP, y - SPEC_TOP, TFT_BLACK);
     tft.drawFastVLine(i, y, SPEC_BOT - y, TFT_CYAN);
@@ -274,7 +284,8 @@ static void sweepSubGHz() {
   tft.setTextDatum(TL_DATUM);
   tft.drawString(buf, 4, tft.height() - 31, 1);
   Serial.printf("sweep: peak=%d dBm @ %.1f MHz min=%d max=%d avg=%ld marc=%02X\n",
-                peak, peakF, mn, mx, (long)(sum / W), ccReadB(0x35, true));
+                peak, peakF, mn, mx, (long)(sum / W), marc);
+  Serial.println();
 }
 
 static void draw24Frame() {
@@ -292,11 +303,12 @@ static void draw24Frame() {
 static void scan24() {
   const int W = tft.width();
   const int top = SB_H + 20, bot = tft.height() - 40;
-  uint8_t busy[126];
+  static uint8_t busy[126];
   int hits = 0, topCh = -1;
-  const int chunk = 42;
+
+  radioBegin();
   for (int r = 0; r < 3; r++) {
-    int from = r * chunk, to = min(126, from + chunk);
+    int from = r * 42, to = min(126, from + 42);
     for (int ch = from; ch < to; ch++) {
       nrfReg(NRF_CS[r], 0x05, true, (uint8_t)ch);
       digitalWrite(NRF_CE[r], HIGH);
@@ -307,6 +319,8 @@ static void scan24() {
       if (on) { hits++; if (topCh < 0) topCh = ch; }
     }
   }
+  radioEnd();
+
   for (int ch = 0; ch < 126; ch++) {
     int x = ch * W / 126, x2 = (ch + 1) * W / 126;
     int h = busy[ch] ? (bot - top) : (bot - top) / 8;
@@ -320,6 +334,7 @@ static void scan24() {
   tft.setTextDatum(TL_DATUM);
   tft.drawString(buf, 4, tft.height() - 31, 1);
   Serial.printf("scan24: busy=%d/126 top_ch=%d\n", hits, topCh);
+  Serial.println();
 }
 
 static void drawPantest() {
@@ -357,10 +372,10 @@ void setup() {
   Serial.printf("battery %d%% chg=%d\n", g_pct, (int)g_chg);
 
   radioSPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
-  radioSPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   for (int i = 0; i < 3; i++) { pinMode(NRF_CS[i], OUTPUT); digitalWrite(NRF_CS[i], HIGH); }
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
+  radioBegin();
   uint8_t v0 = ccReadB(0x31, true);
   ccReset();
   uint8_t v1 = ccReadB(0x31, true);
@@ -373,6 +388,7 @@ void setup() {
   for (int i = 0; i < 3; i++) nrfInit(i);
   Serial.printf("nRF config: %02X %02X %02X\n", nrfRead(NRF_CS[0], 0x00),
                 nrfRead(NRF_CS[1], 0x00), nrfRead(NRF_CS[2], 0x00));
+  radioEnd();
   Serial.printf("buttons raw=%02X\n", buttons());
 
   // самотест: один проход по обоим экранам, чтобы в логе были живые цифры
