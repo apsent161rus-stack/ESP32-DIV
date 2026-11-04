@@ -252,6 +252,8 @@ static void sweepSubGHz() {
     if (dbm < mn) mn = dbm;
     if (dbm > mx) mx = dbm;
     sum += dbm;
+    if ((i % 80) == 0) Serial.printf("  sweep col %d f=%.1f dbm=%d
+", i, f, dbm);
     int y = dbmToY(dbm);
     tft.drawFastVLine(i, SPEC_TOP, y - SPEC_TOP, TFT_BLACK);
     tft.drawFastVLine(i, y, SPEC_BOT - y, TFT_CYAN);
@@ -314,14 +316,18 @@ static void scan24() {
 }
 
 static void drawPantest() {
+  Serial.println("selftest: panorama");
   drawStatusBar("SUB-GHz", "CC1101");
   drawPanoramaFrame();
+  Serial.println("selftest: sweeping");
   sweepSubGHz();
-  delay(400);
+  Serial.println("selftest: scan24");
+  delay(200);
   drawStatusBar("2.4 GHz", "NRF24");
   draw24Frame();
   scan24();
-  delay(400);
+  Serial.println("selftest: back to desktop");
+  delay(200);
   drawStatusBar("RF MON", "BAT");
   drawDesktop();
 }
