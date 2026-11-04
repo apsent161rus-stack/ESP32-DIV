@@ -1,0 +1,56 @@
+name: build
+
+on:
+  push:
+    paths-ignore: ['**/*.md', 'build*/**']
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sketch: diag/div_ident
+            name: div_ident
+            fqbn: esp32:esp32:esp32s3:FlashSize=16M,PSRAM=disabled,PartitionScheme=app3M_fat9M_16MB,CDCOnBoot=cdc,USBMode=hwcdc
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: cache core
+        uses: actions/cache@v4
+        with:
+          path: ~/.arduino15
+          key: arduino15-esp32-3.3.12
+
+      - name: core esp32 3.3.12
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.3.12
+
+      - name: compile ${{ matrix.name }}
+        run: arduino-cli compile -b "${{ matrix.fqbn }}" --output-dir out "${{ matrix.sketch }}"
+
+      - name: merged image
+        run: |
+          pip install esptool
+          esptool --chip esp32s3 merge-bin -o out/${{ matrix.name }}-merged.bin \
+            --flash-mode dio --flash-freq 80m --flash-size 16MB \
+            0x0     out/${{ matrix.name }}.ino.bootloader.bin \
+            0x8000  out/${{ matrix.name }}.ino.partitions.bin \
+            0x10000 out/${{ matrix.name }}.ino.bin || \
+          python -m esptool --chip esp32s3 merge_bin -o out/${{ matrix.name }}-merged.bin \
+            --flash_mode dio --flash_freq 80m --flash_size 16MB \
+            0x0     out/${{ matrix.name }}.ino.bootloader.bin \
+            0x8000  out/${{ matrix.name }}.ino.partitions.bin \
+            0x10000 out/${{ matrix.name }}.ino.bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: out/*.bin
