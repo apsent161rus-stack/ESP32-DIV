@@ -210,7 +210,6 @@ static void sweepSubGHz() {
   static uint8_t lvl[320];
   int peak = -127; float peakF = 0; long sum = 0; int mn = 127, mx = -127;
 
-  radioBegin();
   for (int i = 0; i < W; i++) {
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (W - 1);
     ELECHOUSE_cc1101.setMHZ(f);
@@ -226,7 +225,6 @@ static void sweepSubGHz() {
     sum += dbm;
     lvl[i] = (uint8_t)(dbm + 110);
   }
-  radioEnd();
 
   for (int i = 0; i < W; i++) {
     int dbm = (int)lvl[i] - 110;
@@ -339,10 +337,10 @@ void setup() {
   for (int i = 0; i < 3; i++) { pinMode(NRF_CS[i], OUTPUT); digitalWrite(NRF_CS[i], HIGH); }
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
-  radioBegin();
   bool ccOk = ccInit();
   Serial.printf("CC1101 %s", ccOk ? "OK" : "FAIL");
   Serial.println();
+  radioBegin();
   for (int i = 0; i < 3; i++) nrfInit(i);
   Serial.printf("nRF config: %02X %02X %02X\n", nrfRead(NRF_CS[0], 0x00),
                 nrfRead(NRF_CS[1], 0x00), nrfRead(NRF_CS[2], 0x00));
