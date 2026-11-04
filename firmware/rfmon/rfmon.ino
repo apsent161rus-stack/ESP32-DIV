@@ -123,38 +123,33 @@ static void ccConfig() {
 }
 
 static int ccRxRssi(float mhz) {
-  ccStrobe(0x36);                        // SIDLE
-  delayMicroseconds(150);
-  ccSetFreq(mhz);                        // авто-калибровка при переходе IDLE->RX (MCSM0=0x18)
-  delayMicroseconds(150);
-  uint32_t t0 = micros();
-  ccStrobe(0x34);                        // SRX
-  while (ccReadB(0x35, true) != 0x0D && micros() - t0 < 12000) { }   // ждём RX
-  delayMicroseconds(150);
-  uint8_t m = ccReadB(0x35, true);
-  uint8_t raw = ccReadB(0x34, true);
-  if (mhz < 310.0f) { Serial.print("p "); Serial.print(mhz, 1); Serial.print(" marc="); Serial.print(m, HEX);
-                      Serial.print(" rssi="); Serial.println(raw, HEX); }
-  int r = (raw >= 128) ? ((int)raw - 256) / 2 - 74 : (int)raw / 2 - 74;
-  return r;
+  static int lastGood = -100;
+  for (int attempt = 0; attempt < 2; attempt++) {
+    ccStrobe(0x36);                      // SIDLE
+    delayMicroseconds(150);
+    ccSetFreq(mhz);
+    delayMicroseconds(150);
+    uint32_t t0 = micros();
+    ccStrobe(0x34);                      // SRX
+    while (ccReadB(0x35, true) != 0x0D && micros() - t0 < 8000) { }
+    delayMicroseconds(150);
+    uint8_t raw = ccReadB(0x34, true);
+    if (raw != 0x80 && raw != 0xFF && raw != 0x00) {
+      int r = (raw >= 128) ? ((int)raw - 256) / 2 - 74 : (int)raw / 2 - 74;
+      lastGood = r;
+      return r;
+    }
+  }
+  return lastGood;                       // не портим картину одиночным сбоем
 }
 
 static bool ccInit() {
   ccReset();
   delay(20);
-  Serial.print("cc0: ver="); Serial.print(ccReadB(0x31, true), HEX);
-  Serial.print(" marc="); Serial.println(ccReadB(0x35, true), HEX);
-  ccStrobe(0x34);
-  delay(5);
-  Serial.print("cc0 rx: marc="); Serial.println(ccReadB(0x35, true), HEX);
-  ccStrobe(0x36);
-  delay(2);
   ccConfig();
   delay(60);
   uint8_t v = 0;
   for (int k = 0; k < 10; k++) { v = ccReadB(0x31, true); if (v == 0x14) break; delay(20); }
-  Serial.print("cc1: ver="); Serial.print(v, HEX);
-  Serial.print(" marc="); Serial.println(ccReadB(0x35, true), HEX);
   return v == 0x14;
 }
 
