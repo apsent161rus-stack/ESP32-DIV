@@ -20,9 +20,6 @@ static const int NRF_CS[3] = {4, 48, 21};
 static const int NRF_CE[3] = {15, 47, 14};
 
 TFT_eSPI tft;
-static const SPISettings RADIO_CFG(1000000, MSBFIRST, SPI_MODE0);
-static inline void radioBegin() { SPI.beginTransaction(RADIO_CFG); }
-static inline void radioEnd()   { SPI.endTransaction(); }
 
 static int  g_pct = -1;
 static bool g_chg = false;
@@ -268,7 +265,6 @@ static void scan24() {
   static uint8_t busy[126];
   int hits = 0, topCh = -1;
 
-  radioBegin();
   for (int r = 0; r < 3; r++) {
     int from = r * 42, to = min(126, from + 42);
     for (int ch = from; ch < to; ch++) {
@@ -282,7 +278,6 @@ static void scan24() {
       if (on) { hits++; if (topCh < 0) topCh = ch; }
     }
   }
-  radioEnd();
 
   for (int ch = 0; ch < 126; ch++) {
     int x = ch * W / 126, x2 = (ch + 1) * W / 126;
@@ -344,11 +339,9 @@ void setup() {
   bool ccOk = ccInit();
   Serial.printf("CC1101 %s", ccOk ? "OK" : "FAIL");
   Serial.println();
-  radioBegin();
   for (int i = 0; i < 3; i++) nrfInit(i);
   Serial.printf("nRF config: %02X %02X %02X\n", nrfRead(NRF_CS[0], 0x00),
                 nrfRead(NRF_CS[1], 0x00), nrfRead(NRF_CS[2], 0x00));
-  radioEnd();
   Serial.printf("buttons raw=%02X\n", buttons());
 
   // самотест: один проход по обоим экранам, чтобы в логе были живые цифры
