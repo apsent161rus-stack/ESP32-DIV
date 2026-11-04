@@ -139,9 +139,20 @@ static int ccRxRssi(float mhz) {
 static bool ccInit() {
   ccReset();
   delay(20);
+  Serial.print("cc0: ver="); Serial.print(ccReadB(0x31, true), HEX);
+  Serial.print(" marc="); Serial.println(ccReadB(0x35, true), HEX);
+  ccStrobe(0x34);
+  delay(5);
+  Serial.print("cc0 rx: marc="); Serial.println(ccReadB(0x35, true), HEX);
+  ccStrobe(0x36);
+  delay(2);
   ccConfig();
   delay(60);
-  return ccReadB(0x31, true) == 0x14;
+  uint8_t v = 0;
+  for (int k = 0; k < 10; k++) { v = ccReadB(0x31, true); if (v == 0x14) break; delay(20); }
+  Serial.print("cc1: ver="); Serial.print(v, HEX);
+  Serial.print(" marc="); Serial.println(ccReadB(0x35, true), HEX);
+  return v == 0x14;
 }
 
 /* ---------------- nRF24 ---------------- */
