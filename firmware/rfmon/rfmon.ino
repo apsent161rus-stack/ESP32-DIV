@@ -88,11 +88,14 @@ static int ccRssiDbm() {
   float sign = (r >= 128) ? (float)r - 256.0f : (float)r;
   return (int)(sign / 2.0f - 74.0f + 0.5f);
 }
-static void ccInit() {
+static void ccReset() {
   pinMode(CC_CS, OUTPUT);
   digitalWrite(CC_CS, HIGH);
   ccStrobe(0x30);
   delay(10);
+}
+
+static void ccConfig() {
   const uint8_t regs[][2] = {
     {0x00,0x0B},{0x02,0x0D},{0x03,0x07},{0x04,0xD3},{0x05,0x91},{0x06,0xFF},
     {0x07,0x04},{0x08,0x32},{0x0A,0x00},{0x0B,0x06},{0x0C,0x00},
@@ -346,10 +349,14 @@ void setup() {
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
   uint8_t v0 = ccReadB(0x31, true);
-  ccInit();
-  uint8_t ver = ccReadB(0x31, true);
-  if (ver != 0x14) { delay(20); ccInit(); ver = ccReadB(0x31, true); }
-  Serial.printf("CC1101 pre=%02X post=%02X %s\n", v0, ver, ver == 0x14 ? "OK" : "FAIL");
+  ccReset();
+  uint8_t v1 = ccReadB(0x31, true);
+  ccConfig();
+  uint8_t v2 = ccReadB(0x31, true);
+  delay(50);
+  uint8_t v3 = ccReadB(0x31, true);
+  uint8_t ver = v3;
+  Serial.printf("CC1101 v0=%02X afterReset=%02X afterCfg=%02X now=%02X v3=%02X %s\n", v0, v1, v2, ver, v3, ver == 0x14 ? "OK" : "FAIL");
   for (int i = 0; i < 3; i++) nrfInit(i);
   Serial.printf("nRF config: %02X %02X %02X\n", nrfRead(NRF_CS[0], 0x00),
                 nrfRead(NRF_CS[1], 0x00), nrfRead(NRF_CS[2], 0x00));
