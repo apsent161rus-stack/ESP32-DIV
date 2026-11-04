@@ -271,16 +271,19 @@ static void sweepSubGHz() {
   radioBegin();
   for (int i = 0; i < W; i++) {
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (W - 1);
+    ccStrobe(0x36);                 // SIDLE перед сменой частоты
     ccSetFreq(f);
     delayMicroseconds(200);
-    ccStrobe(0x34);
-    delayMicroseconds(400);
-    int dbm = ccRssiDbm();
+    ccStrobe(0x34);                 // SRX
+    delayMicroseconds(1000);        // ждём AGC/PLL
     uint8_t raw = ccReadB(0x34, true);
-    if (raw == 0xFF || raw == 0x80 || raw == 0x00) dbm = -127;   // битый отсчёт
+    delayMicroseconds(30);
+    uint8_t raw2 = ccReadB(0x34, true);
+    if (raw2 == 0xFF || raw2 == 0x00) raw2 = raw;
+    int dbm = ((raw2 >= 128) ? (int)raw2 - 256 : (int)raw2) / 2 - 74;
+    if (raw2 == 0xFF) dbm = -127;
     if (dbm < -120) dbm = -120;
     if (dbm > -20) dbm = -20;
-    ccStrobe(0x36);
     if (dbm > peak) { peak = dbm; peakF = f; }
     if (dbm < mn) mn = dbm;
     if (dbm > mx) mx = dbm;
