@@ -50,6 +50,11 @@ jobs:
           print("waits patched:", n)
           s = s.replace("SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);", "SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, -1);")
           print("ss pin freed:", s.count("MOSI_PIN, -1)"))
+          s = s.replace("  setSpi();", "Serial.print('S');setSpi();")
+          s = s.replace("      SpiWriteReg(CC1101_", "      Serial.print('.');SpiWriteReg(CC1101_")
+          s = s.replace("    setCCMode(ccmode);", "    Serial.print('C');setCCMode(ccmode);")
+          s = s.replace("    setMHZ(MHz);", "    Serial.print('F');setMHZ(MHz);")
+          s = s.replace("  RegConfigSettings();", "  Serial.print('R');RegConfigSettings();Serial.print('r');")
           io.open(p, "w", encoding="utf-8").write(s)
           io.open(p, "w", encoding="utf-8").write(s)
           PY
