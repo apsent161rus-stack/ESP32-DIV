@@ -131,7 +131,11 @@ static int ccRxRssi(float mhz) {
   ccStrobe(0x34);                        // SRX
   while (ccReadB(0x35, true) != 0x0D && micros() - t0 < 12000) { }   // ждём RX
   delayMicroseconds(150);
-  int r = ccRssiDbm();
+  uint8_t m = ccReadB(0x35, true);
+  uint8_t raw = ccReadB(0x34, true);
+  if (mhz < 310.0f) { Serial.print("p "); Serial.print(mhz, 1); Serial.print(" marc="); Serial.print(m, HEX);
+                      Serial.print(" rssi="); Serial.println(raw, HEX); }
+  int r = (raw >= 128) ? ((int)raw - 256) / 2 - 74 : (int)raw / 2 - 74;
   return r;
 }
 
@@ -263,7 +267,7 @@ static void drawDesktop() {
 
 #define SPEC_TOP  (SB_H + 16)
 #define SPEC_BOT  (tft.height() - 34)
-static const float SWEEP_LO = 281.0f, SWEEP_HI = 928.0f;
+static const float SWEEP_LO = 300.0f, SWEEP_HI = 928.0f;
 
 static int dbmToY(int dbm) {
   const int lo = -100, hi = -30;
@@ -280,7 +284,7 @@ static void drawPanoramaFrame() {
   tft.drawString("SUB-GHz PANORAMA", 6, SB_H + 3, 1);
   tft.setTextDatum(TR_DATUM);
   tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  tft.drawString("281-928 MHz CC1101", tft.width() - 6, SB_H + 3, 1);
+  tft.drawString("300-928 MHz CC1101", tft.width() - 6, SB_H + 3, 1);
   tft.setTextDatum(TL_DATUM);
   for (int i = 1; i < 4; i++) {
   
