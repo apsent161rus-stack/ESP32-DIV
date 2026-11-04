@@ -281,6 +281,8 @@ static void sweepSubGHz() {
     delayMicroseconds(30);
     uint8_t raw2 = ccReadB(0x34, true);
     if (raw2 == 0xFF || raw2 == 0x00) raw2 = raw;
+    if (i < 5) { Serial.print("col "); Serial.print(i); Serial.print(" f="); Serial.print(f, 1);
+                 Serial.print(" raw="); Serial.print(raw, HEX); Serial.print(" raw2="); Serial.println(raw2, HEX); }
     int dbm = ((raw2 >= 128) ? (int)raw2 - 256 : (int)raw2) / 2 - 74;
     if (raw2 == 0xFF) dbm = -127;
     if (dbm < -120) dbm = -120;
