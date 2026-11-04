@@ -67,15 +67,17 @@ static void probeNrf(int idx) {
         cfg0, cfgBack, chBack, setup, status, fifo);
 }
 
-static uint8_t ccRead(uint8_t addr) {
+static uint8_t ccReadB(uint8_t addr, bool burst) {
   digitalWrite(CC_CS, LOW);
   delayMicroseconds(2);
-  SPI.transfer(0x80 | (addr & 0x3F));   // -> status byte
+  SPI.transfer((burst ? 0xC0 : 0x80) | (addr & 0x3F));   // -> status byte
   uint8_t v = SPI.transfer(0x00);        // -> данные регистра
   digitalWrite(CC_CS, HIGH);
   delayMicroseconds(2);
   return v;
 }
+
+static uint8_t ccRead(uint8_t addr) { return ccReadB(addr, false); }
 
 static void ccWrite(uint8_t addr, uint8_t val) {
   digitalWrite(CC_CS, LOW);
@@ -93,12 +95,12 @@ static void probeCC() {
   pinMode(CC_GDO2, INPUT);
   delay(5);
 
-  uint8_t part = ccRead(0x30);          // PARTNUM
-  uint8_t ver = ccRead(0x31);           // VERSION
+  uint8_t part = ccReadB(0x30, true);   // PARTNUM  (статусные регистры — только с burst)
+  uint8_t ver  = ccReadB(0x31, true);   // VERSION
   ccWrite(0x0B, 0x06);                  // FSCTRL1
   uint8_t fsBack = ccRead(0x0B);
   ccWrite(0x0B, 0x00);
-  uint8_t marc = ccRead(0x11);          // MARCSTATE
+  uint8_t marc = ccReadB(0x35, true);   // MARCSTATE
 
   bool ok = (ver == 0x14);
   rline("[CC1101] cs=%02d -> %s  VERSION=%02X (ждём 14) PARTNUM=%02X fsctrl1_w/r=%02X marc=%02X gdo0=%d gdo2=%d\n",
