@@ -49,7 +49,8 @@ jobs:
       - name: platform.txt (-zmuldefs)
         run: |
           CORE="$HOME/.arduino15/packages/esp32/hardware/esp32/3.3.12"
-          sed -i -E 's/^(compiler\.(c|cpp)\.elf\.flags=.*)$/ -zmuldefs/' "$CORE/platform.txt"
+          awk '{ if (index($0,"compiler.c.elf.flags=")==1 || index($0,"compiler.cpp.elf.flags=")==1) print $0" -zmuldefs"; else print }' "$CORE/platform.txt" > /tmp/p.txt
+          mv /tmp/p.txt "$CORE/platform.txt"
           grep -c zmuldefs "$CORE/platform.txt"
 
       - name: compile ${{ matrix.name }}
