@@ -259,8 +259,8 @@ static void sweepSubGHz() {
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   tft.setTextDatum(TL_DATUM);
   tft.drawString(buf, 4, tft.height() - 31, 1);
-  Serial.printf("sweep: peak=%d dBm @ %.1f MHz min=%d max=%d avg=%ld\n",
-                peak, peakF, mn, mx, (long)(sum / W));
+  Serial.printf("sweep: peak=%d dBm @ %.1f MHz min=%d max=%d avg=%ld marc=%02X\n",
+                peak, peakF, mn, mx, (long)(sum / W), ccReadB(0x35, true));
 }
 
 static void draw24Frame() {
@@ -343,9 +343,11 @@ void setup() {
   for (int i = 0; i < 3; i++) { pinMode(NRF_CS[i], OUTPUT); digitalWrite(NRF_CS[i], HIGH); }
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
+  uint8_t v0 = ccReadB(0x31, true);
   ccInit();
   uint8_t ver = ccReadB(0x31, true);
-  Serial.printf("CC1101 VERSION=%02X %s\n", ver, ver == 0x14 ? "OK" : "FAIL");
+  if (ver != 0x14) { delay(20); ccInit(); ver = ccReadB(0x31, true); }
+  Serial.printf("CC1101 pre=%02X post=%02X %s\n", v0, ver, ver == 0x14 ? "OK" : "FAIL");
   for (int i = 0; i < 3; i++) nrfInit(i);
   Serial.printf("nRF config: %02X %02X %02X\n", nrfRead(NRF_CS[0], 0x00),
                 nrfRead(NRF_CS[1], 0x00), nrfRead(NRF_CS[2], 0x00));
