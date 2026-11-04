@@ -63,9 +63,14 @@ static uint8_t buttons() {
 
 /* ---------------- CC1101 (штатный драйвер DIV) ---------------- */
 static bool ccInit() {
+  Serial.print("cc: setSpiPin");
   ELECHOUSE_cc1101.setSpiPin(RF_SCK, RF_MISO, RF_MOSI, CC_CS);
+  Serial.print(" done, Init");
   ELECHOUSE_cc1101.Init();
-  return ELECHOUSE_cc1101.getCC1101();
+  Serial.print(" done, probe");
+  bool ok = ELECHOUSE_cc1101.getCC1101();
+  Serial.println();
+  return ok;
 }
 
 /* ---------------- nRF24 ---------------- */
@@ -333,7 +338,6 @@ void setup() {
   readBattery();
   Serial.printf("battery %d%% chg=%d\n", g_pct, (int)g_chg);
 
-  SPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
   for (int i = 0; i < 3; i++) { pinMode(NRF_CS[i], OUTPUT); digitalWrite(NRF_CS[i], HIGH); }
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
