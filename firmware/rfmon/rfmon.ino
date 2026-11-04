@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <TFT_eSPI.h>
+#include <SPI.h>
 #include <math.h>
 
 #define BL_PIN      7
@@ -18,6 +19,7 @@ static const int NRF_CS[3] = {4, 48, 21};
 static const int NRF_CE[3] = {15, 47, 14};
 
 TFT_eSPI tft;
+SPIClass radioSPI(HSPI);          // SPI3 — отдельно от TFT (SPI2)
 
 static int  g_pct = -1;
 static bool g_chg = false;
@@ -59,20 +61,20 @@ static uint8_t buttons() {
 /* ---------------- CC1101 ---------------- */
 static void ccWrite(uint8_t addr, uint8_t val) {
   digitalWrite(CC_CS, LOW);
-  SPI.transfer(addr & 0x3F);
-  SPI.transfer(val);
+  radioSPI.transfer(addr & 0x3F);
+  radioSPI.transfer(val);
   digitalWrite(CC_CS, HIGH);
 }
 static uint8_t ccReadB(uint8_t addr, bool burst) {
   digitalWrite(CC_CS, LOW);
-  SPI.transfer((burst ? 0xC0 : 0x80) | (addr & 0x3F));
-  uint8_t v = SPI.transfer(0x00);
+  radioSPI.transfer((burst ? 0xC0 : 0x80) | (addr & 0x3F));
+  uint8_t v = radioSPI.transfer(0x00);
   digitalWrite(CC_CS, HIGH);
   return v;
 }
 static void ccStrobe(uint8_t cmd) {
   digitalWrite(CC_CS, LOW);
-  SPI.transfer(cmd);
+  radioSPI.transfer(cmd);
   digitalWrite(CC_CS, HIGH);
 }
 static void ccSetFreq(float mhz) {
@@ -110,16 +112,16 @@ static void nrfReg(uint8_t csn, uint8_t reg, bool write, uint8_t val) {
   for (int i = 0; i < 3; i++) digitalWrite(NRF_CS[i], HIGH);
   digitalWrite(CC_CS, HIGH);
   digitalWrite(csn, LOW);
-  SPI.transfer((write ? 0x20 : 0x00) | (reg & 0x1F));
-  if (write) SPI.transfer(val); else SPI.transfer(0xFF);
+  radioSPI.transfer((write ? 0x20 : 0x00) | (reg & 0x1F));
+  if (write) radioSPI.transfer(val); else radioSPI.transfer(0xFF);
   digitalWrite(csn, HIGH);
 }
 static uint8_t nrfRead(uint8_t csn, uint8_t reg) {
   for (int i = 0; i < 3; i++) digitalWrite(NRF_CS[i], HIGH);
   digitalWrite(CC_CS, HIGH);
   digitalWrite(csn, LOW);
-  SPI.transfer(reg & 0x1F);
-  uint8_t v = SPI.transfer(0xFF);
+  radioSPI.transfer(reg & 0x1F);
+  uint8_t v = radioSPI.transfer(0xFF);
   digitalWrite(csn, HIGH);
   return v;
 }
@@ -338,8 +340,8 @@ void setup() {
   readBattery();
   Serial.printf("battery %d%% chg=%d\n", g_pct, (int)g_chg);
 
-  SPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
-  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  radioSPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
+  radioSPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   for (int i = 0; i < 3; i++) { pinMode(NRF_CS[i], OUTPUT); digitalWrite(NRF_CS[i], HIGH); }
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
