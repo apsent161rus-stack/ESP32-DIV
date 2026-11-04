@@ -15,6 +15,9 @@ jobs:
           - sketch: diag/div_ident
             name: div_ident
             fqbn: esp32:esp32:esp32s3:FlashSize=16M,PSRAM=disabled,PartitionScheme=app3M_fat9M_16MB,CDCOnBoot=cdc,USBMode=hwcdc
+          - sketch: firmware/rfmon
+            name: rfmon
+            fqbn: esp32:esp32:esp32s3:FlashSize=16M,PSRAM=disabled,PartitionScheme=app3M_fat9M_16MB,CDCOnBoot=cdc,USBMode=hwcdc
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +28,12 @@ jobs:
         with:
           path: ~/.arduino15
           key: arduino15-esp32-3.3.12
+
+      - name: tft library
+        run: |
+          arduino-cli lib install "TFT_eSPI@2.5.43"
+          LIBS="$(arduino-cli config get directories.user)/libraries"
+          cp "Libraries/User_Setup v2.h" "$LIBS/TFT_eSPI/User_Setup.h"
 
       - name: core esp32 3.3.12
         run: |
