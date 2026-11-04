@@ -48,10 +48,8 @@ jobs:
           n = s.count("while(digitalRead(MISO_PIN));")
           s = s.replace("while(digitalRead(MISO_PIN));", "/* patched: no busy-wait */")
           print("waits patched:", n)
-          s = s.replace("  setSpi();", "Serial.print('1');setSpi();Serial.print('2');")
-          s = s.replace("  SpiStart();", "SpiStart();Serial.print('3');")
-          s = s.replace("  Reset();", "Serial.print('4');Reset();Serial.print('5');")
-          s = s.replace("  RegConfigSettings();", "Serial.print('6');RegConfigSettings();Serial.print('7');")
+          s = s.replace("SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);", "SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, -1);")
+          print("ss pin freed:", s.count("MOSI_PIN, -1)"))
           io.open(p, "w", encoding="utf-8").write(s)
           io.open(p, "w", encoding="utf-8").write(s)
           PY
