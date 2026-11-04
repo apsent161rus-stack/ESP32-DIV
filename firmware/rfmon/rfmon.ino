@@ -252,8 +252,8 @@ static void sweepSubGHz() {
     if (dbm < mn) mn = dbm;
     if (dbm > mx) mx = dbm;
     sum += dbm;
-    if ((i % 80) == 0) Serial.printf("  sweep col %d f=%.1f dbm=%d
-", i, f, dbm);
+    if ((i % 80) == 0) Serial.printf("  sweep col %d f=%.1f dbm=%d\n", i, f, dbm);
+
     int y = dbmToY(dbm);
     tft.drawFastVLine(i, SPEC_TOP, y - SPEC_TOP, TFT_BLACK);
     tft.drawFastVLine(i, y, SPEC_BOT - y, TFT_CYAN);
