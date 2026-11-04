@@ -98,8 +98,7 @@ static void ccReset() {
   delay(10);
 }
 
-static void ccConfig() {
-  const uint8_t regs[][2] = {
+static const uint8_t CC_REGS[][2] = {
     {0x00,0x0B},{0x02,0x0D},{0x03,0x07},{0x04,0xD3},{0x05,0x91},{0x06,0xFF},
     {0x07,0x04},{0x08,0x32},{0x0A,0x00},{0x0B,0x06},{0x0C,0x00},
     {0x15,0xF5},{0x16,0x83},{0x17,0x13},{0x18,0x22},{0x19,0xF8},{0x1A,0x15},
@@ -107,7 +106,9 @@ static void ccConfig() {
     {0x20,0x03},{0x21,0x40},{0x22,0x91},{0x23,0xFB},{0x24,0x56},{0x25,0x10},
     {0x26,0xE9},{0x27,0x2A},{0x28,0x00},{0x29,0x1F},{0x2C,0x81},{0x2D,0x35},{0x2E,0x09},
   };
-  for (auto& r : regs) ccWrite(r[0], r[1]);
+
+static void ccConfig() {
+  for (auto& r : CC_REGS) ccWrite(r[0], r[1]);
   ccWrite(0x3E, 0x8E);
   ccSetFreq(433.92f);
   ccStrobe(0x36);
@@ -381,6 +382,27 @@ static void ccDiag() {
   ccStrobe(0x36);
 }
 
+static void ccBisect() {
+  ccReset();
+  delay(20);
+  for (size_t k = 0; k < sizeof(CC_REGS) / 2; k++) {
+    ccWrite(CC_REGS[k][0], CC_REGS[k][1]);
+    uint8_t v = ccReadB(0x31, true);
+    if (v != 0x14) {
+      Serial.print("bisect: breaks at #");
+      Serial.print((int)k);
+      Serial.print(" reg=");
+      Serial.print(CC_REGS[k][0], HEX);
+      Serial.print(" val=");
+      Serial.print(CC_REGS[k][1], HEX);
+      Serial.print(" ver=");
+      Serial.println(v, HEX);
+      return;
+    }
+  }
+  Serial.println("bisect: все регистры прошли, ver=14");
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
@@ -420,6 +442,7 @@ void setup() {
 
   // самотест: один проход по обоим экранам, чтобы в логе были живые цифры
   ccDiag();
+  ccBisect();
   drawPantest();
   Serial.println("=== ready ===");
 }
