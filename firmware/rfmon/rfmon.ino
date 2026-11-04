@@ -354,6 +354,33 @@ static void drawPantest() {
   drawDesktop();
 }
 
+static void ccDiag() {
+  Serial.print("diag: ver0="); Serial.print(ccReadB(0x31, true), HEX);
+  Serial.print(" marc0=");      Serial.print(ccReadB(0x35, true), HEX);
+  Serial.print(" rssi0=");      Serial.println(ccReadB(0x34, true), HEX);
+
+  ccReset();
+  delay(20);
+  Serial.print("diag after reset: ver="); Serial.print(ccReadB(0x31, true), HEX);
+  Serial.print(" marc=");                 Serial.print(ccReadB(0x35, true), HEX);
+
+  ccStrobe(0x34);                       // SRX
+  delay(10);
+  Serial.print(" rx marc=");              Serial.print(ccReadB(0x35, true), HEX);
+  Serial.print(" rssi=");                 Serial.println(ccReadB(0x34, true), HEX);
+  ccStrobe(0x36);
+
+  ccConfig();
+  delay(10);
+  Serial.print("diag after cfg: ver=");   Serial.print(ccReadB(0x31, true), HEX);
+  Serial.print(" marc=");                 Serial.print(ccReadB(0x35, true), HEX);
+  ccStrobe(0x34);
+  delay(10);
+  Serial.print(" rx marc=");              Serial.print(ccReadB(0x35, true), HEX);
+  Serial.print(" rssi=");                 Serial.println(ccReadB(0x34, true), HEX);
+  ccStrobe(0x36);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1200);
@@ -392,6 +419,7 @@ void setup() {
   Serial.printf("buttons raw=%02X\n", buttons());
 
   // самотест: один проход по обоим экранам, чтобы в логе были живые цифры
+  ccDiag();
   drawPantest();
   Serial.println("=== ready ===");
 }
