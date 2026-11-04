@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <TFT_eSPI.h>
-#include <ELECHOUSE_CC1101_SRC_DRV.h>
 #include <SPI.h>
 #include <math.h>
 
@@ -58,16 +57,91 @@ static uint8_t buttons() {
   return Wire.read();
 }
 
-/* ---------------- CC1101 (штатный драйвер DIV) ---------------- */
+/* ---------------- CC1101 ---------------- */
+static void ccWrite(uint8_t addr, uint8_t val) {
+  delayMicroseconds(2);
+  digitalWrite(CC_CS, LOW);
+  delayMicroseconds(2);
+  SPI.transfer(addr & 0x3F);
+  SPI.transfer(val);
+  delayMicroseconds(2);
+  digitalWrite(CC_CS, HIGH);
+  delayMicroseconds(2);
+}
+static uint8_t ccReadB(uint8_t addr, bool burst) {
+  delayMicroseconds(2);
+  digitalWrite(CC_CS, LOW);
+  delayMicroseconds(2);
+  SPI.transfer((burst ? 0xC0 : 0x80) | (addr & 0x3F));
+  uint8_t v = SPI.transfer(0x00);
+  delayMicroseconds(2);
+  digitalWrite(CC_CS, HIGH);
+  delayMicroseconds(2);
+  return v;
+}
+static void ccStrobe(uint8_t cmd) {
+  delayMicroseconds(2);
+  digitalWrite(CC_CS, LOW);
+  delayMicroseconds(2);
+  SPI.transfer(cmd);
+  delayMicroseconds(2);
+  digitalWrite(CC_CS, HIGH);
+  delayMicroseconds(2);
+}
+static void ccSetFreq(float mhz) {
+  uint32_t f = (uint32_t)(mhz * 65536.0f / 26.0f + 0.5f);
+  ccWrite(0x0D, (f >> 16) & 0xFF);
+  ccWrite(0x0E, (f >> 8) & 0xFF);
+  ccWrite(0x0F, f & 0xFF);
+}
+static int ccRssiDbm() {
+  uint8_t r = ccReadB(0x34, true);
+  float sign = (r >= 128) ? (float)r - 256.0f : (float)r;
+  return (int)(sign / 2.0f - 74.0f + 0.5f);
+}
+static void ccReset() {
+  pinMode(CC_CS, OUTPUT);
+  digitalWrite(CC_CS, HIGH);
+  ccStrobe(0x30);
+  delay(10);
+}
+
+static const uint8_t CC_REGS[][2] = {
+    {0x00,0x0B},{0x02,0x0D},{0x03,0x07},{0x04,0xD3},{0x05,0x91},{0x06,0xFF},
+    {0x07,0x04},{0x08,0x32},{0x0A,0x00},{0x0B,0x06},{0x0C,0x00},
+    {0x15,0xF5},{0x16,0x83},{0x17,0x13},{0x18,0x22},{0x19,0xF8},{0x1A,0x15},
+    {0x1B,0x07},{0x1C,0x30},{0x1D,0x01},{0x1E,0x16},{0x1F,0x6C},
+    {0x20,0x03},{0x21,0x40},{0x22,0x91},{0x23,0xFB},{0x24,0x56},{0x25,0x10},
+    {0x26,0xE9},{0x27,0x2A},{0x28,0x00},{0x29,0x1F},{0x2C,0x81},{0x2D,0x35},{0x2E,0x09},
+  };
+
+static void ccConfig() {
+  for (auto& r : CC_REGS) ccWrite(r[0], r[1]);
+  ccWrite(0x3E, 0x8E);
+  ccSetFreq(433.92f);
+  ccStrobe(0x36);
+}
+
+static int ccRxRssi(float mhz) {
+  ccStrobe(0x36);                        // SIDLE
+  ccSetFreq(mhz);
+  ccStrobe(0x33);                        // SCAL
+  uint32_t t0 = micros();
+  while (ccReadB(0x35, true) != 0x01 && micros() - t0 < 3000) { }   // ждём IDLE
+  t0 = micros();
+  ccStrobe(0x34);                        // SRX
+  while (ccReadB(0x35, true) != 0x0D && micros() - t0 < 6000) { }   // ждём RX
+  delayMicroseconds(120);
+  int r = ccRssiDbm();
+  return r;
+}
+
 static bool ccInit() {
-  Serial.print("cc: setSpiPin");
-  ELECHOUSE_cc1101.setSpiPin(RF_SCK, RF_MISO, RF_MOSI, CC_CS);
-  Serial.print(" done, Init");
-  ELECHOUSE_cc1101.Init();
-  Serial.print(" done, probe");
-  bool ok = ELECHOUSE_cc1101.getCC1101();
-  Serial.println();
-  return ok;
+  ccReset();
+  delay(20);
+  ccConfig();
+  delay(60);
+  return ccReadB(0x31, true) == 0x14;
 }
 
 /* ---------------- nRF24 ---------------- */
@@ -214,11 +288,7 @@ static void sweepSubGHz() {
 
   for (int i = 0; i < W; i++) {
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (W - 1);
-    ELECHOUSE_cc1101.setMHZ(f);
-    ELECHOUSE_cc1101.SetRx();
-    delayMicroseconds(300);
-    int dbm = ELECHOUSE_cc1101.getRssi();
-    ELECHOUSE_cc1101.setSidle();
+    int dbm = ccRxRssi(f);
     if (dbm < -120) dbm = -120;
     if (dbm > -20) dbm = -20;
     if (dbm > peak) { peak = dbm; peakF = f; }
@@ -336,6 +406,7 @@ void setup() {
   for (int i = 0; i < 3; i++) { pinMode(NRF_CS[i], OUTPUT); digitalWrite(NRF_CS[i], HIGH); }
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
+  SPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
   bool ccOk = ccInit();
   Serial.printf("CC1101 %s", ccOk ? "OK" : "FAIL");
   Serial.println();

@@ -35,37 +35,6 @@ jobs:
           arduino-cli lib install "TFT_eSPI@2.5.43"
           LIBS="$(arduino-cli config get directories.user)/libraries"
           cp firmware/rfmon/User_Setup.h "$LIBS/TFT_eSPI/User_Setup.h"
-          unzip -q -o "Libraries/SmartRC-CC1101-Driver-Lib-master.zip" -d "$LIBS"
-          # в архиве два драйвера с одинаковыми символами — JT убираем
-          rm -f "$LIBS/SmartRC-CC1101-Driver-Lib-master/ELECHOUSE_CC1101_SRC_JT_DRV.cpp"                 "$LIBS/SmartRC-CC1101-Driver-Lib-master/ELECHOUSE_CC1101_SRC_JT_DRV.h"
-          # SpiEnd() гасит SPI (SPI.end) и ломает общую шину с TFT — убираем
-          python3 - <<'PY'
-          import io
-          p = "/home/runner/Arduino/libraries/SmartRC-CC1101-Driver-Lib-master/ELECHOUSE_CC1101_SRC_DRV.cpp"
-          s = io.open(p, encoding="utf-8", errors="replace").read()
-          s = s.replace("  SPI.endTransaction();", "  // patched: keep bus")
-          s = s.replace("  SPI.end();", "  // patched: keep bus")
-          n = s.count("while(digitalRead(MISO_PIN));")
-          s = s.replace("while(digitalRead(MISO_PIN));", "/* patched: no busy-wait */")
-          print("waits patched:", n)
-          s = s.replace("SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);", "SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, -1);")
-          print("ss pin freed:", s.count("MOSI_PIN, -1)"))
-          s = s.replace("  setSpi();", "Serial.print('S');setSpi();")
-          s = s.replace("      SpiWriteReg(CC1101_", "      Serial.print('.');SpiWriteReg(CC1101_")
-          s = s.replace("    setCCMode(ccmode);", "    Serial.print('C');setCCMode(ccmode);")
-          s = s.replace("    setMHZ(MHz);", "    Serial.print('F');setMHZ(MHz);")
-          s = s.replace("  RegConfigSettings();", "  Serial.print('R');RegConfigSettings();Serial.print('r');")
-          io.open(p, "w", encoding="utf-8").write(s)
-          io.open(p, "w", encoding="utf-8").write(s)
-          PY
-
-      - name: core esp32 3.3.12
-        run: |
-          arduino-cli config init --overwrite
-          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          arduino-cli core update-index
-          arduino-cli core install esp32:esp32@3.3.12
-
       - name: platform.txt (-zmuldefs)
         run: |
           CORE="$HOME/.arduino15/packages/esp32/hardware/esp32/3.3.12"
