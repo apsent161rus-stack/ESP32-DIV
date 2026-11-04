@@ -150,7 +150,10 @@ static void nrfInit(int i) {
   pinMode(NRF_CS[i], OUTPUT);
   digitalWrite(NRF_CS[i], HIGH);
   nrfReg(NRF_CS[i], 0x01, true, 0x00);
-  nrfReg(NRF_CS[i], 0x02, true, 0x00);
+  nrfReg(NRF_CS[i], 0x02, true, 0x01);                 // EN_RXADDR: пайп 0
+  const uint8_t addr[5] = {0xE7, 0xE7, 0xE7, 0xE7, 0xE7};
+  for (int b = 0; b < 5; b++) nrfReg(NRF_CS[i], 0x0A + b, true, addr[b]);
+  nrfReg(NRF_CS[i], 0x11, true, 32);                   // RX_PW_P0
   nrfReg(NRF_CS[i], 0x03, true, 0x03);
   nrfReg(NRF_CS[i], 0x04, true, 0x00);
   nrfReg(NRF_CS[i], 0x05, true, 76);
@@ -269,9 +272,14 @@ static void sweepSubGHz() {
   for (int i = 0; i < W; i++) {
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (W - 1);
     ccSetFreq(f);
+    delayMicroseconds(200);
     ccStrobe(0x34);
-    delayMicroseconds(420);
+    delayMicroseconds(400);
     int dbm = ccRssiDbm();
+    uint8_t raw = ccReadB(0x34, true);
+    if (raw == 0xFF || raw == 0x80 || raw == 0x00) dbm = -127;   // битый отсчёт
+    if (dbm < -120) dbm = -120;
+    if (dbm > -20) dbm = -20;
     ccStrobe(0x36);
     if (dbm > peak) { peak = dbm; peakF = f; }
     if (dbm < mn) mn = dbm;
@@ -325,8 +333,9 @@ static void scan24() {
     for (int ch = from; ch < to; ch++) {
       nrfReg(NRF_CS[r], 0x05, true, (uint8_t)ch);
       digitalWrite(NRF_CE[r], HIGH);
-      delayMicroseconds(420);
+      delayMicroseconds(600);
       bool on = nrfRpd(r);
+      if (!on) { delayMicroseconds(200); on = nrfRpd(r); }
       digitalWrite(NRF_CE[r], LOW);
       busy[ch] = on ? 1 : 0;
       if (on) { hits++; if (topCh < 0) topCh = ch; }
@@ -453,8 +462,6 @@ void setup() {
   Serial.printf("buttons raw=%02X\n", buttons());
 
   // самотест: один проход по обоим экранам, чтобы в логе были живые цифры
-  ccDiag();
-  ccBisect();
   drawPantest();
   Serial.println("=== ready ===");
 }
