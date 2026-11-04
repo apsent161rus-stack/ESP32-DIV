@@ -63,22 +63,34 @@ static uint8_t buttons() {
 
 /* ---------------- CC1101 ---------------- */
 static void ccWrite(uint8_t addr, uint8_t val) {
+  delayMicroseconds(2);
   digitalWrite(CC_CS, LOW);
+  delayMicroseconds(2);
   radioSPI.transfer(addr & 0x3F);
   radioSPI.transfer(val);
+  delayMicroseconds(2);
   digitalWrite(CC_CS, HIGH);
+  delayMicroseconds(2);
 }
 static uint8_t ccReadB(uint8_t addr, bool burst) {
+  delayMicroseconds(2);
   digitalWrite(CC_CS, LOW);
+  delayMicroseconds(2);
   radioSPI.transfer((burst ? 0xC0 : 0x80) | (addr & 0x3F));
   uint8_t v = radioSPI.transfer(0x00);
+  delayMicroseconds(2);
   digitalWrite(CC_CS, HIGH);
+  delayMicroseconds(2);
   return v;
 }
 static void ccStrobe(uint8_t cmd) {
+  delayMicroseconds(2);
   digitalWrite(CC_CS, LOW);
+  delayMicroseconds(2);
   radioSPI.transfer(cmd);
+  delayMicroseconds(2);
   digitalWrite(CC_CS, HIGH);
+  delayMicroseconds(2);
 }
 static void ccSetFreq(float mhz) {
   uint32_t f = (uint32_t)(mhz * 65536.0f / 26.0f + 0.5f);
