@@ -29,11 +29,15 @@ jobs:
           path: ~/.arduino15
           key: arduino15-esp32-3.3.12
 
-      - name: tft library
+      - name: libraries
         run: |
+          set -e
           arduino-cli lib install "TFT_eSPI@2.5.43"
           LIBS="$(arduino-cli config get directories.user)/libraries"
-          cp "Libraries/User_Setup v2.h" "$LIBS/TFT_eSPI/User_Setup.h"
+          cp firmware/rfmon/User_Setup.h "$LIBS/TFT_eSPI/User_Setup.h"
+          unzip -q -o "Libraries/SmartRC-CC1101-Driver-Lib-master.zip" -d "$LIBS"
+          # в архиве два драйвера с одинаковыми символами — JT убираем
+          rm -f "$LIBS/SmartRC-CC1101-Driver-Lib-master/ELECHOUSE_CC1101_SRC_JT_DRV.cpp"                 "$LIBS/SmartRC-CC1101-Driver-Lib-master/ELECHOUSE_CC1101_SRC_JT_DRV.h"
 
       - name: core esp32 3.3.12
         run: |

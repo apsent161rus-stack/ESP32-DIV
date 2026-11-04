@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <TFT_eSPI.h>
+#include <ELECHOUSE_CC1101_SRC_DRV.h>
 #include <SPI.h>
 #include <math.h>
 
@@ -19,10 +20,9 @@ static const int NRF_CS[3] = {4, 48, 21};
 static const int NRF_CE[3] = {15, 47, 14};
 
 TFT_eSPI tft;
-SPIClass radioSPI(HSPI);          // отдельный порт под радиомодули
 static const SPISettings RADIO_CFG(1000000, MSBFIRST, SPI_MODE0);
-static inline void radioBegin() { radioSPI.beginTransaction(RADIO_CFG); }
-static inline void radioEnd()   { radioSPI.endTransaction(); }
+static inline void radioBegin() { SPI.beginTransaction(RADIO_CFG); }
+static inline void radioEnd()   { SPI.endTransaction(); }
 
 static int  g_pct = -1;
 static bool g_chg = false;
@@ -61,69 +61,11 @@ static uint8_t buttons() {
   return Wire.read();
 }
 
-/* ---------------- CC1101 ---------------- */
-static void ccWrite(uint8_t addr, uint8_t val) {
-  delayMicroseconds(2);
-  digitalWrite(CC_CS, LOW);
-  delayMicroseconds(2);
-  radioSPI.transfer(addr & 0x3F);
-  radioSPI.transfer(val);
-  delayMicroseconds(2);
-  digitalWrite(CC_CS, HIGH);
-  delayMicroseconds(2);
-}
-static uint8_t ccReadB(uint8_t addr, bool burst) {
-  delayMicroseconds(2);
-  digitalWrite(CC_CS, LOW);
-  delayMicroseconds(2);
-  radioSPI.transfer((burst ? 0xC0 : 0x80) | (addr & 0x3F));
-  uint8_t v = radioSPI.transfer(0x00);
-  delayMicroseconds(2);
-  digitalWrite(CC_CS, HIGH);
-  delayMicroseconds(2);
-  return v;
-}
-static void ccStrobe(uint8_t cmd) {
-  delayMicroseconds(2);
-  digitalWrite(CC_CS, LOW);
-  delayMicroseconds(2);
-  radioSPI.transfer(cmd);
-  delayMicroseconds(2);
-  digitalWrite(CC_CS, HIGH);
-  delayMicroseconds(2);
-}
-static void ccSetFreq(float mhz) {
-  uint32_t f = (uint32_t)(mhz * 65536.0f / 26.0f + 0.5f);
-  ccWrite(0x0D, (f >> 16) & 0xFF);
-  ccWrite(0x0E, (f >> 8) & 0xFF);
-  ccWrite(0x0F, f & 0xFF);
-}
-static int ccRssiDbm() {
-  uint8_t r = ccReadB(0x34, true);
-  float sign = (r >= 128) ? (float)r - 256.0f : (float)r;
-  return (int)(sign / 2.0f - 74.0f + 0.5f);
-}
-static void ccReset() {
-  pinMode(CC_CS, OUTPUT);
-  digitalWrite(CC_CS, HIGH);
-  ccStrobe(0x30);
-  delay(10);
-}
-
-static const uint8_t CC_REGS[][2] = {
-    {0x00,0x0B},{0x02,0x0D},{0x03,0x07},{0x04,0xD3},{0x05,0x91},{0x06,0xFF},
-    {0x07,0x04},{0x08,0x32},{0x0A,0x00},{0x0B,0x06},{0x0C,0x00},
-    {0x15,0xF5},{0x16,0x83},{0x17,0x13},{0x18,0x22},{0x19,0xF8},{0x1A,0x15},
-    {0x1B,0x07},{0x1C,0x30},{0x1D,0x01},{0x1E,0x16},{0x1F,0x6C},
-    {0x20,0x03},{0x21,0x40},{0x22,0x91},{0x23,0xFB},{0x24,0x56},{0x25,0x10},
-    {0x26,0xE9},{0x27,0x2A},{0x28,0x00},{0x29,0x1F},{0x2C,0x81},{0x2D,0x35},{0x2E,0x09},
-  };
-
-static void ccConfig() {
-  for (auto& r : CC_REGS) ccWrite(r[0], r[1]);
-  ccWrite(0x3E, 0x8E);
-  ccSetFreq(433.92f);
-  ccStrobe(0x36);
+/* ---------------- CC1101 (штатный драйвер DIV) ---------------- */
+static bool ccInit() {
+  ELECHOUSE_cc1101.setSpiPin(RF_SCK, RF_MISO, RF_MOSI, CC_CS);
+  ELECHOUSE_cc1101.Init();
+  return ELECHOUSE_cc1101.getCC1101();
 }
 
 /* ---------------- nRF24 ---------------- */
@@ -131,16 +73,16 @@ static void nrfReg(uint8_t csn, uint8_t reg, bool write, uint8_t val) {
   for (int i = 0; i < 3; i++) digitalWrite(NRF_CS[i], HIGH);
   digitalWrite(CC_CS, HIGH);
   digitalWrite(csn, LOW);
-  radioSPI.transfer((write ? 0x20 : 0x00) | (reg & 0x1F));
-  if (write) radioSPI.transfer(val); else radioSPI.transfer(0xFF);
+  SPI.transfer((write ? 0x20 : 0x00) | (reg & 0x1F));
+  if (write) SPI.transfer(val); else SPI.transfer(0xFF);
   digitalWrite(csn, HIGH);
 }
 static uint8_t nrfRead(uint8_t csn, uint8_t reg) {
   for (int i = 0; i < 3; i++) digitalWrite(NRF_CS[i], HIGH);
   digitalWrite(CC_CS, HIGH);
   digitalWrite(csn, LOW);
-  radioSPI.transfer(reg & 0x1F);
-  uint8_t v = radioSPI.transfer(0xFF);
+  SPI.transfer(reg & 0x1F);
+  uint8_t v = SPI.transfer(0xFF);
   digitalWrite(csn, HIGH);
   return v;
 }
@@ -271,20 +213,11 @@ static void sweepSubGHz() {
   radioBegin();
   for (int i = 0; i < W; i++) {
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (W - 1);
-    ccStrobe(0x36);                 // SIDLE
-    ccSetFreq(f);
-    ccStrobe(0x33);                 // SCAL — ручная калибровка после смены частоты
-    delayMicroseconds(700);
-    ccStrobe(0x34);                 // SRX
-    delayMicroseconds(250);
-    uint8_t raw = ccReadB(0x34, true);
-    delayMicroseconds(30);
-    uint8_t raw2 = ccReadB(0x34, true);
-    if (raw2 == 0xFF || raw2 == 0x00) raw2 = raw;
-    if (i < 5) { Serial.print("col "); Serial.print(i); Serial.print(" f="); Serial.print(f, 1);
-                 Serial.print(" raw="); Serial.print(raw, HEX); Serial.print(" raw2="); Serial.println(raw2, HEX); }
-    int dbm = ((raw2 >= 128) ? (int)raw2 - 256 : (int)raw2) / 2 - 74;
-    if (raw2 == 0xFF) dbm = -127;
+    ELECHOUSE_cc1101.setMHZ(f);
+    ELECHOUSE_cc1101.SetRx();
+    delayMicroseconds(300);
+    int dbm = ELECHOUSE_cc1101.getRssi();
+    ELECHOUSE_cc1101.setSidle();
     if (dbm < -120) dbm = -120;
     if (dbm > -20) dbm = -20;
     if (dbm > peak) { peak = dbm; peakF = f; }
@@ -293,7 +226,6 @@ static void sweepSubGHz() {
     sum += dbm;
     lvl[i] = (uint8_t)(dbm + 110);
   }
-  uint8_t marc = ccReadB(0x35, true);
   radioEnd();
 
   for (int i = 0; i < W; i++) {
@@ -311,7 +243,7 @@ static void sweepSubGHz() {
   tft.setTextDatum(TL_DATUM);
   tft.drawString(buf, 4, tft.height() - 31, 1);
   Serial.printf("sweep: peak=%d dBm @ %.1f MHz min=%d max=%d avg=%ld marc=%02X\n",
-                peak, peakF, mn, mx, (long)(sum / W), marc);
+                peak, peakF, mn, mx, (long)(sum / W));
   Serial.println();
 }
 
@@ -382,53 +314,9 @@ static void drawPantest() {
   drawDesktop();
 }
 
-static void ccDiag() {
-  Serial.print("diag: ver0="); Serial.print(ccReadB(0x31, true), HEX);
-  Serial.print(" marc0=");      Serial.print(ccReadB(0x35, true), HEX);
-  Serial.print(" rssi0=");      Serial.println(ccReadB(0x34, true), HEX);
 
-  ccReset();
-  delay(20);
-  Serial.print("diag after reset: ver="); Serial.print(ccReadB(0x31, true), HEX);
-  Serial.print(" marc=");                 Serial.print(ccReadB(0x35, true), HEX);
 
-  ccStrobe(0x34);                       // SRX
-  delay(10);
-  Serial.print(" rx marc=");              Serial.print(ccReadB(0x35, true), HEX);
-  Serial.print(" rssi=");                 Serial.println(ccReadB(0x34, true), HEX);
-  ccStrobe(0x36);
 
-  ccConfig();
-  delay(10);
-  Serial.print("diag after cfg: ver=");   Serial.print(ccReadB(0x31, true), HEX);
-  Serial.print(" marc=");                 Serial.print(ccReadB(0x35, true), HEX);
-  ccStrobe(0x34);
-  delay(10);
-  Serial.print(" rx marc=");              Serial.print(ccReadB(0x35, true), HEX);
-  Serial.print(" rssi=");                 Serial.println(ccReadB(0x34, true), HEX);
-  ccStrobe(0x36);
-}
-
-static void ccBisect() {
-  ccReset();
-  delay(20);
-  for (size_t k = 0; k < sizeof(CC_REGS) / 2; k++) {
-    ccWrite(CC_REGS[k][0], CC_REGS[k][1]);
-    uint8_t v = ccReadB(0x31, true);
-    if (v != 0x14) {
-      Serial.print("bisect: breaks at #");
-      Serial.print((int)k);
-      Serial.print(" reg=");
-      Serial.print(CC_REGS[k][0], HEX);
-      Serial.print(" val=");
-      Serial.print(CC_REGS[k][1], HEX);
-      Serial.print(" ver=");
-      Serial.println(v, HEX);
-      return;
-    }
-  }
-  Serial.println("bisect: все регистры прошли, ver=14");
-}
 
 void setup() {
   Serial.begin(115200);
@@ -447,20 +335,14 @@ void setup() {
   readBattery();
   Serial.printf("battery %d%% chg=%d\n", g_pct, (int)g_chg);
 
-  radioSPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
+  SPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
   for (int i = 0; i < 3; i++) { pinMode(NRF_CS[i], OUTPUT); digitalWrite(NRF_CS[i], HIGH); }
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
   radioBegin();
-  uint8_t v0 = ccReadB(0x31, true);
-  ccReset();
-  uint8_t v1 = ccReadB(0x31, true);
-  ccConfig();
-  uint8_t v2 = ccReadB(0x31, true);
-  delay(50);
-  uint8_t v3 = ccReadB(0x31, true);
-  uint8_t ver = v3;
-  Serial.printf("CC1101 v0=%02X afterReset=%02X afterCfg=%02X now=%02X v3=%02X %s\n", v0, v1, v2, ver, v3, ver == 0x14 ? "OK" : "FAIL");
+  bool ccOk = ccInit();
+  Serial.printf("CC1101 %s", ccOk ? "OK" : "FAIL");
+  Serial.println();
   for (int i = 0; i < 3; i++) nrfInit(i);
   Serial.printf("nRF config: %02X %02X %02X\n", nrfRead(NRF_CS[0], 0x00),
                 nrfRead(NRF_CS[1], 0x00), nrfRead(NRF_CS[2], 0x00));
