@@ -81,9 +81,10 @@ static void ccSetFreq(float mhz) {
   ccWrite(0x0E, (f >> 8) & 0xFF);
   ccWrite(0x0F, f & 0xFF);
 }
-static int8_t ccRssiDbm() {
+static int ccRssiDbm() {
   uint8_t r = ccReadB(0x34, true);
-  return (r >= 128) ? (int8_t)((r - 256) / 2 - 74) : (int8_t)(r / 2 - 74);
+  float sign = (r >= 128) ? (float)r - 256.0f : (float)r;
+  return (int)(sign / 2.0f - 74.0f + 0.5f);
 }
 static void ccInit() {
   pinMode(CC_CS, OUTPUT);
@@ -239,7 +240,7 @@ static void sweepSubGHz() {
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (W - 1);
     ccSetFreq(f);
     ccStrobe(0x34);
-    delayMicroseconds(260);
+    delayMicroseconds(420);
     int dbm = ccRssiDbm();
     ccStrobe(0x36);
     if (dbm > peak) { peak = dbm; peakF = f; }
@@ -285,7 +286,7 @@ static void scan24() {
     for (int ch = from; ch < to; ch++) {
       nrfReg(NRF_CS[r], 0x05, true, (uint8_t)ch);
       digitalWrite(NRF_CE[r], HIGH);
-      delayMicroseconds(190);
+      delayMicroseconds(420);
       bool on = nrfRpd(r);
       digitalWrite(NRF_CE[r], LOW);
       busy[ch] = on ? 1 : 0;
@@ -338,7 +339,7 @@ void setup() {
   Serial.printf("battery %d%% chg=%d\n", g_pct, (int)g_chg);
 
   SPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
-  SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   for (int i = 0; i < 3; i++) { pinMode(NRF_CS[i], OUTPUT); digitalWrite(NRF_CS[i], HIGH); }
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
