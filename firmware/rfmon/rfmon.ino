@@ -161,18 +161,22 @@ static void drawBatteryIcon(int x, int y) {
 }
 
 static void drawStatusBar(const char* left, const char* right) {
+  Serial.print("[sb1]");
   tft.fillRect(0, 0, tft.width(), SB_H, 0x0861);
+  Serial.print("[sb2]");
   tft.setTextDatum(TL_DATUM);
   tft.setTextColor(TFT_CYAN, 0x0861);
   tft.drawString(left, 5, 4, 1);
   tft.setTextColor(TFT_LIGHTGREY, 0x0861);
   tft.drawString(right, 82, 4, 1);
+  Serial.print("[sb3]");
   char buf[8];
   snprintf(buf, sizeof(buf), "%d%%", g_pct < 0 ? 0 : g_pct);
   tft.setTextDatum(TR_DATUM);
   tft.setTextColor(g_pct > 50 ? TFT_GREEN : g_pct > 20 ? TFT_YELLOW : TFT_RED, 0x0861);
   tft.drawString(buf, 288, 4, 1);
   drawBatteryIcon(292, 3);
+  Serial.print("[sb4]");
   tft.setTextDatum(TL_DATUM);
 }
 
@@ -222,6 +226,7 @@ static int dbmToY(int dbm) {
 }
 
 static void drawPanoramaFrame() {
+  Serial.print("[pf1]");
   tft.fillRect(0, SB_H, tft.width(), tft.height() - SB_H, TFT_BLACK);
   tft.setTextDatum(TL_DATUM);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
@@ -231,10 +236,12 @@ static void drawPanoramaFrame() {
   tft.drawString("281-928 MHz CC1101", tft.width() - 6, SB_H + 3, 1);
   tft.setTextDatum(TL_DATUM);
   for (int i = 1; i < 4; i++) {
+  Serial.print("[pf2]");
     int y = SPEC_TOP + i * (SPEC_BOT - SPEC_TOP) / 4;
     tft.drawFastHLine(0, y, tft.width(), 0x10A2);
   }
   footer("LEFT/RIGHT view");
+  Serial.print("[pf3]");
 }
 
 static void sweepSubGHz() {
