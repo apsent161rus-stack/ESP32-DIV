@@ -46,6 +46,9 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install esp32:esp32@3.3.12
 
+      - name: platform.txt (-zmuldefs)
+        run: cp Libraries/platform.txt "$HOME/.arduino15/packages/esp32/hardware/esp32/3.3.12/platform.txt"
+
       - name: compile ${{ matrix.name }}
         run: arduino-cli compile -b "${{ matrix.fqbn }}" --output-dir out "${{ matrix.sketch }}"
 
