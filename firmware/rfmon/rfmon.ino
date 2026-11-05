@@ -126,23 +126,19 @@ static void ccConfig() {
 
 static int ccRxRssi(float mhz) {
   static int lastGood = -100;
-  for (int attempt = 0; attempt < 2; attempt++) {
-    ccStrobe(0x36);                      // SIDLE
-    delayMicroseconds(150);
-    ccSetFreq(mhz);
-    delayMicroseconds(150);
-    uint32_t t0 = micros();
-    ccStrobe(0x34);                      // SRX
-    while (ccReadB(0x35, true) != 0x0D && micros() - t0 < 3500) { }
-    delayMicroseconds(150);
-    uint8_t raw = ccReadB(0x34, true);
-    if (raw != 0x80 && raw != 0xFF && raw != 0x00) {
-      int r = (raw >= 128) ? ((int)raw - 256) / 2 - 74 : (int)raw / 2 - 74;
-      lastGood = r;
-      return r;
-    }
-  }
-  return lastGood;                       // не портим картину одиночным сбоем
+  ccStrobe(0x36);                        // SIDLE
+  delayMicroseconds(200);
+  ccSetFreq(mhz);
+  delayMicroseconds(200);
+  ccStrobe(0x34);                        // SRX (авто-калибровка ~0.7 мс)
+  delayMicroseconds(900);
+  uint8_t raw = ccReadB(0x34, true);
+  ccStrobe(0x36);
+  if (raw == 0x80 || raw == 0xFF || raw == 0x00) return lastGood;
+  int r = (raw >= 128) ? ((int)raw - 256) / 2 - 74 : (int)raw / 2 - 74;
+  if (r < -115) return lastGood;         // мусор
+  lastGood = r;
+  return r;
 }
 
 static bool ccInit() {
