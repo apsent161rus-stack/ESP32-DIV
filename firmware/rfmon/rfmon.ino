@@ -133,7 +133,7 @@ static int ccRxRssi(float mhz) {
   ccStrobe(0x36);                          // SIDLE (нужен перед сменой FREQ)
   ccSetFreq(mhz);
   ccStrobe(0x34);                          // SRX
-  delayMicroseconds(330);
+  delayMicroseconds(300);
   uint8_t raw = ccReadB(0x34, true);
   if (raw == 0x80 || raw == 0xFF || raw == 0x00) return lastGood;
   int r = (raw >= 128) ? ((int)raw - 256) / 2 - 74 : (int)raw / 2 - 74;
@@ -436,7 +436,7 @@ void setup() {
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
   SPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
-  SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
   bool ccOk = ccInit();
   Serial.printf("CC1101 %s", ccOk ? "OK" : "FAIL");
   Serial.println();
