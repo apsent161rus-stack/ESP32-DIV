@@ -247,35 +247,32 @@ static const char* MOD_T[6] = {"SUB-GHz", "2.4 GHz", "BT scan", "Wi-Fi", "IR", "
 static const char* MOD_S[6] = {"CC1101 300-928", "3x NRF24 126ch", "BLE + classic", "AP / RSSI", "recv / send", "bright, sleep"};
 static const char MOD_IC[6] = {'S', '2', 'B', 'W', 'I', 'G'};
 
+static void drawTile(int i) {
+  const int x0 = 4, y0 = SB_H + 16, tw = 154, th = 54, gx = 4, gy = 4;
+  int col = i % 2, row = i / 2;
+  int x = x0 + col * (tw + gx), y = y0 + row * (th + gy);
+  bool sel = (i == g_sel);
+  uint16_t bg = sel ? 0x0A52 : 0x0841;
+  tft.fillRoundRect(x, y, tw, th, 3, bg);
+  tft.drawRoundRect(x, y, tw, th, 3, sel ? TFT_CYAN : 0x18E3);
+  if (sel) tft.drawRoundRect(x - 1, y - 1, tw + 2, th + 2, 4, TFT_CYAN);
+  tft.fillRoundRect(x + 6, y + 8, 24, 24, 3, sel ? TFT_CYAN : 0x18E3);
+  tft.setTextColor(sel ? 0x0420 : TFT_CYAN, sel ? TFT_CYAN : 0x18E3);
+  char ic[2] = {MOD_IC[i], 0};
+  tft.drawString(ic, x + 14, y + 15, 2);
+  tft.setTextColor(sel ? TFT_WHITE : TFT_LIGHTGREY, bg);
+  tft.drawString(MOD_T[i], x + 36, y + 10, 1);
+  tft.setTextColor(sel ? 0x9FF4 : 0x5B72, bg);
+  tft.drawString(MOD_S[i], x + 36, y + 26, 1);
+  if (i == 0 || i == 1) tft.fillCircle(x + tw - 7, y + 7, 2, TFT_GREEN);
+}
+
 static void drawDesktop() {
   tft.fillRect(0, SB_H, tft.width(), tft.height() - SB_H, TFT_BLACK);
   tft.setTextDatum(TL_DATUM);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   tft.drawString("MODULES", 6, SB_H + 3, 1);
-
-  const int x0 = 4, y0 = SB_H + 16, tw = 154, th = 54, gx = 4, gy = 4;
-  for (int i = 0; i < 6; i++) {
-    int col = i % 2, row = i / 2;
-    int x = x0 + col * (tw + gx), y = y0 + row * (th + gy);
-    bool sel = (i == g_sel);
-    uint16_t bg = sel ? 0x0A52 : 0x0841;
-    tft.fillRoundRect(x, y, tw, th, 3, bg);
-    tft.drawRoundRect(x, y, tw, th, 3, sel ? TFT_CYAN : 0x18E3);
-    if (sel) tft.drawRoundRect(x - 1, y - 1, tw + 2, th + 2, 4, TFT_CYAN);
-    // иконка
-    tft.fillRoundRect(x + 6, y + 8, 24, 24, 3, sel ? TFT_CYAN : 0x18E3);
-    tft.setTextColor(sel ? 0x0420 : TFT_CYAN, sel ? TFT_CYAN : 0x18E3);
-    char ic[2] = {MOD_IC[i], 0};
-    tft.drawString(ic, x + 14, y + 15, 2);
-    // текст
-    tft.setTextColor(sel ? TFT_WHITE : TFT_LIGHTGREY, bg);
-    tft.drawString(MOD_T[i], x + 36, y + 10, 1);
-    tft.setTextColor(sel ? 0x9FF4 : 0x5B72, bg);
-    tft.drawString(MOD_S[i], x + 36, y + 26, 1);
-    if (i == 0 || i == 1) {   // модуль реально отвечает
-      tft.fillCircle(x + tw - 7, y + 7, 2, TFT_GREEN);
-    }
-  }
+  for (int i = 0; i < 6; i++) drawTile(i);
   footer("UP/DOWN  OK=open  MENU");
 }
 
@@ -316,6 +313,7 @@ static void sweepSubGHz() {
   uint32_t frameStart = millis();
 
   for (int i = 0; i < N; i++) {
+    if ((i & 15) == 0 && buttons() != 0xFF) break;      // прерываем кадр ради кнопок
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (N - 1);
     int dbm = ccRxRssi(f);
     if (dbm > peak) { peak = dbm; peakF = f; }
@@ -326,12 +324,17 @@ static void sweepSubGHz() {
   }
 
   const int px2 = tft.width() / N + 1;
+  static uint8_t prev[96];
+  static bool prevValid = false;
   for (int i = 0; i < N; i++) {
+    if (prevValid && prev[i] == lvl[i]) continue;      // ничего не поменялось — не трогаем экран
+    prev[i] = lvl[i];
     int dbm = (int)lvl[i] - 120;
     int y = dbmToY(dbm);
     tft.fillRect(i * px2, SPEC_TOP, px2, y - SPEC_TOP, TFT_BLACK);
     tft.fillRect(i * px2, y, px2, SPEC_BOT - y, TFT_CYAN);
   }
+  prevValid = true;
   int pi = (int)((peakF - SWEEP_LO) / (SWEEP_HI - SWEEP_LO) * (N - 1));
   tft.fillRect(pi * px2, SPEC_TOP, px2, SPEC_BOT - SPEC_TOP, 0x7BEF);
 
@@ -465,7 +468,7 @@ void loop() {
     }
   }
 
-  if (now - lastBtn > 150) {
+  if (now - lastBtn > 25) {
     lastBtn = now;
     static uint8_t lastB = 0xFF;
     uint8_t b = buttons();
@@ -474,8 +477,8 @@ void loop() {
     if (b != 0xFF && b != 0x00) {
       bool up = !(b & (1 << 7)), down = !(b & (1 << 5));
       bool left = !(b & (1 << 3)), right = !(b & (1 << 4)), sel = !(b & (1 << 6));
-      if (up && g_view == 0)   { g_sel = (g_sel + N_MOD - 1) % N_MOD; drawDesktop(); }
-      if (down && g_view == 0) { g_sel = (g_sel + 1) % N_MOD; drawDesktop(); }
+      if (up && g_view == 0)   { int o = g_sel; g_sel = (g_sel + N_MOD - 1) % N_MOD; drawTile(o); drawTile(g_sel); }
+      if (down && g_view == 0) { int o = g_sel; g_sel = (g_sel + 1) % N_MOD; drawTile(o); drawTile(g_sel); }
       if (right) { g_view = (g_view + 1) % 3; g_needFrame = true; Serial.printf("view -> %d\n", g_view); }
       if (left)  { g_view = (g_view + 2) % 3; g_needFrame = true; Serial.printf("view -> %d\n", g_view); }
       if (sel) {
@@ -494,7 +497,7 @@ void loop() {
       else             { drawStatusBar("2.4 GHz", "NRF24");  draw24Frame(); }
       lastDraw = 0;
     }
-    if (now - lastDraw > 5) {
+    if (now - lastDraw >= 0) {
       lastDraw = now;
       if (g_view == 1) sweepSubGHz(); else scan24();
     }
