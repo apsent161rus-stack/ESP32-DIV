@@ -52,7 +52,9 @@ static void readBattery() {
 
 static uint8_t buttons() {
   Wire.beginTransmission(PCF8574);
-  if (Wire.endTransmission(false) != 0) return 0xFF;
+  Wire.write(0xFF);                 // все линии в режим входа
+  if (Wire.endTransmission() != 0) return 0xFF;
+  delayMicroseconds(200);
   if (Wire.requestFrom(PCF8574, 1) != 1) return 0xFF;
   return Wire.read();
 }
@@ -131,7 +133,7 @@ static int ccRxRssi(float mhz) {
     delayMicroseconds(150);
     uint32_t t0 = micros();
     ccStrobe(0x34);                      // SRX
-    while (ccReadB(0x35, true) != 0x0D && micros() - t0 < 8000) { }
+    while (ccReadB(0x35, true) != 0x0D && micros() - t0 < 3500) { }
     delayMicroseconds(150);
     uint8_t raw = ccReadB(0x34, true);
     if (raw != 0x80 && raw != 0xFF && raw != 0x00) {
@@ -244,18 +246,38 @@ static void footer(const char* hint) {
   tft.drawString(hint, 6, tft.height() - 14, 1);
 }
 
+static const char* MOD_T[6] = {"SUB-GHz", "2.4 GHz", "BT scan", "Wi-Fi", "IR", "Settings"};
+static const char* MOD_S[6] = {"CC1101 300-928", "3x NRF24 126ch", "BLE + classic", "AP / RSSI", "recv / send", "bright, sleep"};
+static const char MOD_IC[6] = {'S', '2', 'B', 'W', 'I', 'G'};
+
 static void drawDesktop() {
   tft.fillRect(0, SB_H, tft.width(), tft.height() - SB_H, TFT_BLACK);
   tft.setTextDatum(TL_DATUM);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
-  tft.drawString("MODULES", 6, SB_H + 4, 2);
-  for (int i = 0; i < N_MOD; i++) {
-    int y = SB_H + 26 + i * 26;
+  tft.drawString("MODULES", 6, SB_H + 3, 1);
+
+  const int x0 = 4, y0 = SB_H + 16, tw = 154, th = 54, gx = 4, gy = 4;
+  for (int i = 0; i < 6; i++) {
+    int col = i % 2, row = i / 2;
+    int x = x0 + col * (tw + gx), y = y0 + row * (th + gy);
     bool sel = (i == g_sel);
-    if (sel) tft.fillRect(4, y - 3, tft.width() - 8, 22, 0x0A52);
-    tft.drawRect(4, y - 3, tft.width() - 8, 22, sel ? TFT_CYAN : 0x18E3);
-    tft.setTextColor(sel ? TFT_WHITE : TFT_LIGHTGREY, sel ? 0x0A52 : TFT_BLACK);
-    tft.drawString(MODULES[i], 10, y, 1);
+    uint16_t bg = sel ? 0x0A52 : 0x0841;
+    tft.fillRoundRect(x, y, tw, th, 3, bg);
+    tft.drawRoundRect(x, y, tw, th, 3, sel ? TFT_CYAN : 0x18E3);
+    if (sel) tft.drawRoundRect(x - 1, y - 1, tw + 2, th + 2, 4, TFT_CYAN);
+    // иконка
+    tft.fillRoundRect(x + 6, y + 8, 24, 24, 3, sel ? TFT_CYAN : 0x18E3);
+    tft.setTextColor(sel ? 0x0420 : TFT_CYAN, sel ? TFT_CYAN : 0x18E3);
+    char ic[2] = {MOD_IC[i], 0};
+    tft.drawString(ic, x + 14, y + 15, 2);
+    // текст
+    tft.setTextColor(sel ? TFT_WHITE : TFT_LIGHTGREY, bg);
+    tft.drawString(MOD_T[i], x + 36, y + 10, 1);
+    tft.setTextColor(sel ? 0x9FF4 : 0x5B72, bg);
+    tft.drawString(MOD_S[i], x + 36, y + 26, 1);
+    if (i == 0 || i == 1) {   // модуль реально отвечает
+      tft.fillCircle(x + tw - 7, y + 7, 2, TFT_GREEN);
+    }
   }
   footer("UP/DOWN  OK=open  MENU");
 }
@@ -291,38 +313,37 @@ static void drawPanoramaFrame() {
 }
 
 static void sweepSubGHz() {
-  const int W = tft.width();
-  static uint8_t lvl[320];
+  const int N = 160;                        // 2 пикселя на точку — вдвое быстрее
+  static uint8_t lvl[160];
   int peak = -127; float peakF = 0; long sum = 0; int mn = 127, mx = -127;
 
-  for (int i = 0; i < W; i++) {
-    float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (W - 1);
+  for (int i = 0; i < N; i++) {
+    float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (N - 1);
     int dbm = ccRxRssi(f);
-    if (dbm < -120) dbm = -120;
-    if (dbm > -20) dbm = -20;
     if (dbm > peak) { peak = dbm; peakF = f; }
     if (dbm < mn) mn = dbm;
     if (dbm > mx) mx = dbm;
     sum += dbm;
-    lvl[i] = (uint8_t)(dbm + 110);
+    lvl[i] = (uint8_t)(dbm + 120);
   }
 
-  for (int i = 0; i < W; i++) {
-    int dbm = (int)lvl[i] - 110;
+  const int px2 = tft.width() / N;
+  for (int i = 0; i < N; i++) {
+    int dbm = (int)lvl[i] - 120;
     int y = dbmToY(dbm);
-    tft.drawFastVLine(i, SPEC_TOP, y - SPEC_TOP, TFT_BLACK);
-    tft.drawFastVLine(i, y, SPEC_BOT - y, TFT_CYAN);
+    tft.fillRect(i * px2, SPEC_TOP, px2, y - SPEC_TOP, TFT_BLACK);
+    tft.fillRect(i * px2, y, px2, SPEC_BOT - y, TFT_CYAN);
   }
-  int px = (int)((peakF - SWEEP_LO) / (SWEEP_HI - SWEEP_LO) * (W - 1));
-  tft.drawFastVLine(px, SPEC_TOP, SPEC_BOT - SPEC_TOP, 0x7BEF);
+  int pi = (int)((peakF - SWEEP_LO) / (SWEEP_HI - SWEEP_LO) * (N - 1));
+  tft.fillRect(pi * px2, SPEC_TOP, px2, SPEC_BOT - SPEC_TOP, 0x7BEF);
+
   char buf[48];
   snprintf(buf, sizeof(buf), "peak %d dBm @ %.1f MHz", peak, peakF);
-  tft.fillRect(0, tft.height() - 32, W, 12, TFT_BLACK);
+  tft.fillRect(0, tft.height() - 32, tft.width(), 12, TFT_BLACK);
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   tft.setTextDatum(TL_DATUM);
   tft.drawString(buf, 4, tft.height() - 31, 1);
-  Serial.printf("sweep: peak=%d dBm @ %.1f MHz min=%d max=%d avg=%ld marc=%02X\n",
-                peak, peakF, mn, mx, (long)(sum / W));
+  Serial.printf("sweep: peak=%d dBm @ %.1f MHz min=%d max=%d avg=%ld", peak, peakF, mn, mx, (long)(sum / N));
   Serial.println();
 }
 
@@ -446,7 +467,10 @@ void loop() {
 
   if (now - lastBtn > 150) {
     lastBtn = now;
+    static uint8_t lastB = 0xFF;
     uint8_t b = buttons();
+    if (b != lastB && b != 0xFF) { Serial.print("btn raw="); Serial.println(b, HEX); }
+    lastB = b;
     if (b != 0xFF && b != 0x00) {
       bool up = !(b & (1 << 7)), down = !(b & (1 << 5));
       bool left = !(b & (1 << 3)), right = !(b & (1 << 4)), sel = !(b & (1 << 6));
