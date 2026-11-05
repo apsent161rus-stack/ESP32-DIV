@@ -92,9 +92,13 @@ static void ccStrobe(uint8_t cmd) {
 }
 static void ccSetFreq(float mhz) {
   uint32_t f = (uint32_t)(mhz * 65536.0f / 26.0f + 0.5f);
-  ccWrite(0x0D, (f >> 16) & 0xFF);
-  ccWrite(0x0E, (f >> 8) & 0xFF);
-  ccWrite(0x0F, f & 0xFF);
+  digitalWrite(CC_CS, LOW);
+  delayMicroseconds(1);
+  SPI.transfer(0x4D);                       // burst write с FREQ2
+  SPI.transfer((f >> 16) & 0xFF);
+  SPI.transfer((f >> 8) & 0xFF);
+  SPI.transfer(f & 0xFF);
+  digitalWrite(CC_CS, HIGH);
 }
 static int ccRssiDbm() {
   uint8_t r = ccReadB(0x34, true);
@@ -126,17 +130,14 @@ static void ccConfig() {
 
 static int ccRxRssi(float mhz) {
   static int lastGood = -100;
-  ccStrobe(0x36);                        // SIDLE
-  delayMicroseconds(200);
+  ccStrobe(0x36);                          // SIDLE (нужен перед сменой FREQ)
   ccSetFreq(mhz);
-  delayMicroseconds(200);
-  ccStrobe(0x34);                        // SRX (авто-калибровка ~0.7 мс)
-  delayMicroseconds(900);
+  ccStrobe(0x34);                          // SRX
+  delayMicroseconds(330);
   uint8_t raw = ccReadB(0x34, true);
-  ccStrobe(0x36);
   if (raw == 0x80 || raw == 0xFF || raw == 0x00) return lastGood;
   int r = (raw >= 128) ? ((int)raw - 256) / 2 - 74 : (int)raw / 2 - 74;
-  if (r < -115) return lastGood;         // мусор
+  if (r < -115) return lastGood;
   lastGood = r;
   return r;
 }
@@ -309,9 +310,10 @@ static void drawPanoramaFrame() {
 }
 
 static void sweepSubGHz() {
-  const int N = 160;                        // 2 пикселя на точку — вдвое быстрее
-  static uint8_t lvl[160];
+  const int N = 96;                         // 96 точек, ~3.3 пикселя на точку
+  static uint8_t lvl[96];
   int peak = -127; float peakF = 0; long sum = 0; int mn = 127, mx = -127;
+  uint32_t frameStart = millis();
 
   for (int i = 0; i < N; i++) {
     float f = SWEEP_LO + (SWEEP_HI - SWEEP_LO) * i / (N - 1);
@@ -323,7 +325,7 @@ static void sweepSubGHz() {
     lvl[i] = (uint8_t)(dbm + 120);
   }
 
-  const int px2 = tft.width() / N;
+  const int px2 = tft.width() / N + 1;
   for (int i = 0; i < N; i++) {
     int dbm = (int)lvl[i] - 120;
     int y = dbmToY(dbm);
@@ -339,7 +341,8 @@ static void sweepSubGHz() {
   tft.setTextColor(TFT_CYAN, TFT_BLACK);
   tft.setTextDatum(TL_DATUM);
   tft.drawString(buf, 4, tft.height() - 31, 1);
-  Serial.printf("sweep: peak=%d dBm @ %.1f MHz min=%d max=%d avg=%ld", peak, peakF, mn, mx, (long)(sum / N));
+  Serial.printf("sweep: peak=%d dBm @ %.1f MHz min=%d max=%d avg=%ld t=%lums", peak, peakF, mn, mx,
+                (long)(sum / N), (unsigned long)(millis() - frameStart));
   Serial.println();
 }
 
@@ -366,9 +369,9 @@ static void scan24() {
     for (int ch = from; ch < to; ch++) {
       nrfReg(NRF_CS[r], 0x05, true, (uint8_t)ch);
       digitalWrite(NRF_CE[r], HIGH);
-      delayMicroseconds(600);
+      delayMicroseconds(400);
       bool on = nrfRpd(r);
-      if (!on) { delayMicroseconds(200); on = nrfRpd(r); }
+      if (!on) { delayMicroseconds(120); on = nrfRpd(r); }
       digitalWrite(NRF_CE[r], LOW);
       busy[ch] = on ? 1 : 0;
       if (on) { hits++; if (topCh < 0) topCh = ch; }
@@ -433,6 +436,7 @@ void setup() {
   pinMode(CC_CS, OUTPUT); digitalWrite(CC_CS, HIGH);
 
   SPI.begin(RF_SCK, RF_MISO, RF_MOSI, -1);
+  SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
   bool ccOk = ccInit();
   Serial.printf("CC1101 %s", ccOk ? "OK" : "FAIL");
   Serial.println();
@@ -490,7 +494,7 @@ void loop() {
       else             { drawStatusBar("2.4 GHz", "NRF24");  draw24Frame(); }
       lastDraw = 0;
     }
-    if (now - lastDraw > 40) {
+    if (now - lastDraw > 5) {
       lastDraw = now;
       if (g_view == 1) sweepSubGHz(); else scan24();
     }
